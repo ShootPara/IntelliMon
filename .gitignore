@@ -1,0 +1,23 @@
+## .NET Core / C# build outputs
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Visual Studio
+.vs/
+.vscode/
+
+## SQLite & Temporary files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+
+## OS generated
+desktop.ini
+$RECYCLE.BIN/
+Thumbs.db
