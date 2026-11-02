@@ -22,6 +22,7 @@ public partial class OverlayWindow : Window
     private bool _isFading = false;
     private System.Windows.Point _dragStart;
     private bool _isDragging = false;
+    private bool _hasPositioned = false;
 
     public ProcessCardViewModel ViewModel { get; } = new ProcessCardViewModel();
 
@@ -29,54 +30,82 @@ public partial class OverlayWindow : Window
     {
         InitializeComponent();
         DataContext = ViewModel;
+
+        // Start invisible to prevent the frame-0 flash at (0,0).
+        // The Loaded event positions and fades in the window once layout is complete
+        // and ActualHeight is real.
+        Opacity = 0;
+        Loaded += OnFirstLoaded;
+    }
+
+    private void OnFirstLoaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= OnFirstLoaded;
         PositionNearTaskbar();
+        _hasPositioned = true;
+
+        // Fade in smoothly on first appearance
+        var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(220));
+        BeginAnimation(OpacityProperty, fadeIn);
     }
 
     /// <summary>
     /// Positions the window near the bottom-right corner of the primary screen.
+    /// Only called when ActualHeight is valid (after layout/Loaded).
     /// </summary>
     private void PositionNearTaskbar()
     {
         var workArea = SystemParameters.WorkArea;
         Left = workArea.Right - Width - 16;
+        // ActualHeight is now accurate because we're in or after Loaded
         Top = workArea.Bottom - ActualHeight - 60;
     }
 
     /// <summary>
     /// Updates the displayed content and plays a fade transition.
+    /// Safe to call before the window has fully appeared.
     /// </summary>
     public void ShowEntry(ProcessCardViewModel viewModel)
     {
-        // Update data context on UI thread
         Dispatcher.Invoke(() =>
         {
+            // Buffer the incoming data so we always display the latest values,
+            // even if a fade is already in progress.
+            ApplyViewModel(viewModel);
+            UpdateStatusDot();
+
+            // If a fade cycle is already running, let it finish — the data
+            // is already updated so the fade-in will reveal the new content.
             if (_isFading) return;
 
-            var fadeOut = new DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(120));
+            // Don't fade-out if the window is still invisible (startup state).
+            double fromOpacity = _hasPositioned ? Opacity : 0.0;
+
+            _isFading = true;
+            var fadeOut = new DoubleAnimation(fromOpacity, 0.0, TimeSpan.FromMilliseconds(120));
             fadeOut.Completed += (_, _) =>
             {
-                ViewModel.IsAllQuiet = viewModel.IsAllQuiet;
-                ViewModel.ProcessName = viewModel.ProcessName;
-                ViewModel.DisplayName = viewModel.DisplayName;
-                ViewModel.Category = viewModel.Category;
-                ViewModel.Summary = viewModel.Summary;
-                ViewModel.TriggerReason = viewModel.TriggerReason;
-                ViewModel.CpuPercent = viewModel.CpuPercent;
-                ViewModel.MemoryPercent = viewModel.MemoryPercent;
-                ViewModel.DiskPercent = viewModel.DiskPercent;
-                ViewModel.HasKnowledge = viewModel.HasKnowledge;
-                ViewModel.Publisher = viewModel.Publisher;
-
                 var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(180));
                 fadeIn.Completed += (_, _) => _isFading = false;
                 BeginAnimation(OpacityProperty, fadeIn);
             };
-
-            _isFading = true;
             BeginAnimation(OpacityProperty, fadeOut);
-
-            UpdateStatusDot();
         });
+    }
+
+    private void ApplyViewModel(ProcessCardViewModel viewModel)
+    {
+        ViewModel.IsAllQuiet = viewModel.IsAllQuiet;
+        ViewModel.ProcessName = viewModel.ProcessName;
+        ViewModel.DisplayName = viewModel.DisplayName;
+        ViewModel.Category = viewModel.Category;
+        ViewModel.Summary = viewModel.Summary;
+        ViewModel.TriggerReason = viewModel.TriggerReason;
+        ViewModel.CpuPercent = viewModel.CpuPercent;
+        ViewModel.MemoryPercent = viewModel.MemoryPercent;
+        ViewModel.DiskPercent = viewModel.DiskPercent;
+        ViewModel.HasKnowledge = viewModel.HasKnowledge;
+        ViewModel.Publisher = viewModel.Publisher;
     }
 
     private void UpdateStatusDot()
